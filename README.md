@@ -24,9 +24,8 @@ project/
 │── models/
 │   ├── best_nn_model.pth
 │   └── cql_model.d3
-│── data/
-│   └── (raw CSVs omitted)
-git clone https://github.com/<your-username>/<repo-name>.git
+
+git clone [https://github.com/<your-username>/<repo-name>.git](https://github.com/gozemallick/loan-approval-optimization)
 cd <repo-name>
 pip install -r requirements.txt
 pip install d3rlpy
