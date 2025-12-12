@@ -20,12 +20,7 @@ The goal is to build both a high-AUC classifier and a profit-maximizing approval
 project/
 │── README.md
 │── requirements.txt
-│── notebooks/
-│   ├── 1_EDA_Preprocessing.ipynb
-│   ├── 2_DeepLearning_Model.ipynb
-│   ├── 3_GradientBoosting_and_Ensemble.ipynb
-│   ├── 4_Offline_RL_CQL.ipynb
-│   ├── 5_Analysis_Comparison.ipynb
+│── notebook/
 │── models/
 │   ├── best_nn_model.pth
 │   └── cql_model.d3
