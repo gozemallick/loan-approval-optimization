@@ -16,14 +16,13 @@ Offline Reinforcement Learning (CQL)
 Comparison of ML classification vs. RL decision policy
 
 The goal is to build both a high-AUC classifier and a profit-maximizing approval policy, and then compare how ML vs. RL behave on real LendingClub-style loan data.
-# Project Structure
+## Project Structure
 project/
 │── README.md
 │── requirements.txt
 │── notebook/
-│── models/
-│   ├── best_nn_model.pth
-│   └── cql_model.d3
+│──best_nn_model.pth
+│── cql_model.d3
 
 git clone [https://github.com/<your-username>/<repo-name>.git](https://github.com/gozemallick/loan-approval-optimization)
 cd <repo-name>
