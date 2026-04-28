@@ -1,201 +1,278 @@
-# loan-approval-optimization
-Predictive Modeling + Offline RL for Profit-Optimized Credit Decisioning
+# Loan Approval Optimization
 
-This project implements an end-to-end pipeline for loan risk prediction and policy optimization using:
+Predictive modeling and offline reinforcement learning for profit-aware credit decisioning.
 
-EDA & Feature Engineering
+This project builds an end-to-end loan approval pipeline using LendingClub-style historical loan data. It compares traditional supervised learning models that predict default risk with an offline reinforcement learning policy that directly optimizes loan approval profit.
 
-Deep Learning Model (MLP)
+## Project Goal
 
-Gradient Boosting (HistGB)
+Most credit risk models answer one question:
 
-Ensemble Model (NN + GB)
+```text
+How likely is this applicant to default?
+```
 
-Offline Reinforcement Learning (CQL)
+This project also asks a business question:
 
-Comparison of ML classification vs. RL decision policy
+```text
+Should this loan be approved if the goal is to maximize expected profit?
+```
 
-The goal is to build both a high-AUC classifier and a profit-maximizing approval policy, and then compare how ML vs. RL behave on real LendingClub-style loan data.
-## Project Structure
-project/
-│── README.md
-│── requirements.txt
-│── notebook/
-│──best_nn_model.pth
-│── cql_model.d3
+To answer both, the notebook trains supervised models for default prediction and a Conservative Q-Learning agent for approval policy optimization.
 
-git clone [https://github.com/<your-username>/<repo-name>.git](https://github.com/gozemallick/loan-approval-optimization)
-cd <repo-name>
-pip install -r requirements.txt
-pip install d3rlpy
-1. Data Cleaning & Feature Engineering
+## Repository Structure
 
-Main steps:
+| File | Description |
+| --- | --- |
+| `notebook.ipynb` | Main notebook containing EDA, preprocessing, supervised modeling, ensemble modeling, offline RL, and result comparison. |
+| `best_nn_model.pth` | Saved PyTorch neural network weights from the best validation AUC checkpoint. |
+| `requirements.txt` | Python dependencies required to run the notebook. |
+| `README.md` | Project documentation. |
 
-Parse issue_d → year + month
+## Data Pipeline
 
-Compute credit history length
+```text
+Raw loan data
+      |
+      v
+Target creation from loan_status
+      |
+      v
+EDA and missing-value analysis
+      |
+      v
+Feature engineering
+      |
+      v
+Preprocessing with imputation, scaling, and one-hot encoding
+      |
+      v
+Train / validation / test split
+      |
+      +--> Neural Network classifier
+      |
+      +--> Histogram Gradient Boosting classifier
+      |
+      +--> NN + GB ensemble
+      |
+      +--> Offline RL dataset creation
+               |
+               v
+          Discrete CQL approval policy
+```
 
-Clean employment length
+## Dataset and Target
 
-Extract numeric loan term
+The notebook uses a LendingClub-style accepted loans dataset.
 
-Ordinal encode grade/subgrade
+The binary target is created from `loan_status`:
 
-Create ratio features:
+| Target | Meaning | Loan statuses |
+| --- | --- | --- |
+| `0` | Good loan | `Fully Paid` |
+| `1` | Bad loan / default risk | `Charged Off`, `Default`, `Late (31-120 days)`, `Late (16-30 days)` |
 
-loan_to_income
+Rows with ambiguous or non-final loan statuses are removed so the target reflects completed loan outcomes.
 
-installment_to_income
+## Feature Engineering
 
-Handle missing values & outliers
+The notebook creates applicant, loan, and credit-history features, including:
 
-One-hot encode categorical columns
+- `issue_d_year` and `issue_d_month` from issue date.
+- `credit_history_length` from earliest credit line date.
+- `emp_length_clean` from employment length text.
+- `term_clean` from loan term.
+- `grade_ord` and `sub_grade_ord` from loan grade.
+- `loan_to_income`.
+- `installment_to_income`.
 
-Train/Val/Test split (70/15/15)
+The final feature set combines numerical and categorical variables such as loan amount, interest rate, annual income, DTI, revolving utilization, home ownership, verification status, purpose, address state, and application type.
 
-Output:
+## Preprocessing
 
-X_train_p, X_val_p, X_test_p (processed)
+The preprocessing pipeline uses:
 
-y_train, y_val, y_test
-2. Deep Learning Model (MLP)
+- Median imputation for numerical features.
+- Most-frequent imputation for categorical features.
+- Standard scaling for numerical features.
+- One-hot encoding for categorical features.
+- Stratified train, validation, and test split.
 
-Architecture:
+Outliers and invalid values are also handled by clipping selected financial ratios and replacing infinite values.
 
-Linear → BatchNorm → ReLU → Dropout
+## Supervised Models
 
-Linear → BatchNorm → ReLU → Dropout
+### Neural Network
 
-Linear → ReLU
+The PyTorch MLP uses:
 
-Output layer (logit)
+- Linear layers.
+- Batch normalization.
+- ReLU activation.
+- Dropout.
+- `BCEWithLogitsLoss` with class imbalance weighting.
+- Adam optimizer.
+- Early stopping based on validation AUC.
 
-Training details:
+The best weights are saved as:
 
-BCEWithLogitsLoss with class imbalance correction
-
-Adam optimizer
-
-Early stopping on Validation AUC
-
-Best weights saved automatically as:
+```text
 best_nn_model.pth
-Final NN Results
-| Metric             | Validation | Test   |
-| ------------------ | ---------- | ------ |
-| **AUC**            | 0.7408     | 0.7393 |
-| **F1**             | 0.4663     | 0.4651 |
-| **Best Threshold** | 0.56       | —      |
+```
 
-3. Histogram Gradient Boosting Model (HistGB)
+### Histogram Gradient Boosting
 
-Model:
+The project also trains a `HistGradientBoostingClassifier`:
+
+```python
 HistGradientBoostingClassifier(
     max_depth=6,
     learning_rate=0.05,
-    max_iter=200
+    max_iter=200,
+    random_state=42
 )
-GB Results
-| Metric  | Validation | Test   |
-| ------- | ---------- | ------ |
-| **AUC** | 0.7397     | 0.7379 |
-| **F1**  | 0.4677     | 0.4652 |
-4. Ensemble Model (NN + GB)
+```
 
-Combined probability:
-ensemble_prob = 0.5 * NN + 0.5 * GB
+### Ensemble
 
-Ensemble Results
-| Metric  | Validation   | Test         |
-| ------- | ------------ | ------------ |
-| **AUC** | ⭐ **0.7418** | ⭐ **0.7401** |
-| **F1**  | ⭐ **0.4686** | ⭐ **0.4679** |
+The ensemble averages the neural network and gradient boosting probabilities:
 
-5. Offline Reinforcement Learning (CQL)
-🔹 How RL Dataset Was Created
+```python
+ensemble_prob = 0.5 * nn_prob + 0.5 * gb_prob
+```
 
-Every loan forms two transitions:
-| Action          | Reward                                  |
-| --------------- | --------------------------------------- |
-| **1 = Approve** | Profit if paid, `-loan_amnt` if default |
-| **0 = Reject**  | Always `0`                              |
+## Supervised Model Results
 
-This forms a single-step MDP suitable for offline RL.
+| Model | Validation AUC | Validation F1 | Test AUC | Test F1 | Notes |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Neural Network | 0.74086 | 0.46627 | 0.73927 | 0.46508 | Strong nonlinear baseline |
+| Gradient Boosting | 0.73975 | 0.46775 | 0.73787 | 0.46517 | Stable tree-based model |
+| Ensemble (NN + GB) | 0.74185 | 0.46859 | 0.74015 | 0.46789 | Best supervised model |
 
-🔹 Algorithm
+The ensemble gives the best supervised performance, showing that the neural network and gradient boosting model capture slightly different signals.
 
-Discrete CQL (Conservative Q-Learning)
+## Offline Reinforcement Learning
 
-Input: 96 processed features
+The loan approval problem is reformulated as a single-step offline RL task.
 
-Output: action (0/1)
+| Component | Definition |
+| --- | --- |
+| State | Processed applicant and loan feature vector |
+| Action | `0 = deny`, `1 = approve` |
+| Reward for deny | `0` |
+| Reward for approved fully paid loan | Interest-based profit |
+| Reward for approved defaulted loan | Negative principal loss |
 
-RL Policy Results
-| Metric                  | Value        |
-| ----------------------- | ------------ |
-| **Total Profit**        | $109,434,483 |
-| **Avg Profit per Loan** | $1848.34     |
-| **Approval Rate**       | 91.28%       |
-| Fully Paid Approved     | 44,188       |
-| Default Approved        | 9,859        |
+The reward function is:
 
-The RL model directly maximizes profit, not AUC/F1.
-6. ML vs RL Comparison
-Machine Learning (NN, GB, Ensemble)
+```python
+if action == 0:
+    reward = 0
+elif outcome == 0:
+    reward = loan_amnt * int_rate * term_years
+else:
+    reward = -loan_amnt
+```
 
-Outputs probability of default
+The RL model uses Discrete Conservative Q-Learning through `d3rlpy`.
 
-Must choose a threshold
+## RL Policy Results
 
-Optimizes AUC/F1
+| Metric | Value |
+| --- | ---: |
+| Total Profit on Test Set | 109,434,483.87 |
+| Expected Profit per Loan | 1,848.34 |
+| Approval Rate | 91.28% |
+| Approved and Fully Paid | 44,188 |
+| Approved and Defaulted | 9,859 |
 
-Good for ranking risk
+The RL policy is more business-oriented than the supervised classifiers because it optimizes reward directly instead of AUC or F1.
 
-Reinforcement Learning (CQL)
+## ML vs RL Interpretation
 
-Learns profit-maximizing approval decisions
+Supervised models predict default probability. They are useful for ranking applicant risk and building conservative approval rules.
 
-No threshold needed
+Offline RL learns an approval policy. It may approve some risky loans when the expected interest return is high enough, and it may reject some low-risk loans when the profit margin is too small.
 
-Optimizes reward, not accuracy metrics
+A practical deployment strategy would combine both:
 
-Better business performance
+| Situation | Suggested action |
+| --- | --- |
+| RL approves and default risk is low | Approve |
+| Supervised model predicts very high default risk | Deny |
+| RL and supervised model disagree | Send to human review |
 
-Insight:
+## Installation
 
-AUC/F1 tells you how accurate your classifier is,
-RL tells you how to make money.
-Requirements
-numpy
-pandas
-scikit-learn
-matplotlib
-seaborn
-torch
-d3rlpy
-joblib
-10. Final Outcomes
-🔹 Best Classifier
+Clone the repository:
 
-Ensemble (NN + GB)
-AUC = 0.7401, F1 = 0.4679
+```bash
+git clone https://github.com/gozemallick/loan-approval-optimization.git
+cd loan-approval-optimization
+```
 
-🔹 Best Decision Policy
+Install dependencies:
 
-CQL RL Model
-Expected profit per loan = $1848.34
+```bash
+pip install -r requirements.txt
+```
 
-ML gives risk probabilities,
-RL gives business-optimized decisions.
-Contact
+If `d3rlpy` installation fails in a notebook environment, install it separately:
 
-This project demonstrates:
+```bash
+pip install d3rlpy
+```
 
-Full ML pipeline
+## Running the Project
 
-Deep Learning + GB + Ensemble
+Open the notebook:
 
-Offline RL with Conservative Q-Learning
+```bash
+jupyter notebook notebook.ipynb
+```
 
-Business-oriented evaluation
+Update the dataset path inside the notebook:
+
+```python
+DATA_PATH = "/path/to/accepted_2007_to_2018Q4.csv"
+```
+
+Then run the notebook cells in order.
+
+## Requirements
+
+Main libraries used:
+
+- `numpy`
+- `pandas`
+- `scikit-learn`
+- `matplotlib`
+- `seaborn`
+- `torch`
+- `d3rlpy`
+- `joblib`
+- `tqdm`
+
+## Limitations
+
+- The reward function is simplified and does not include recovery rates, servicing cost, capital cost, late fees, or collection outcomes.
+- The RL setup is a single-step offline formulation, so it cannot fully model repayment timelines.
+- The notebook uses historical outcomes, so care is needed to avoid data leakage in real deployment.
+- Real credit decisions require fairness, compliance, explainability, and human review.
+- The model should not be used for real lending decisions without validation, governance, and regulatory review.
+
+## Future Work
+
+- Add SHAP explanations for supervised models.
+- Tune LightGBM, XGBoost, and CatBoost baselines.
+- Calibrate predicted default probabilities.
+- Add risk-sensitive or constrained RL to control approval risk.
+- Improve the reward function with recovery amount, cost of capital, and expected loss.
+- Add a deployment script or small API for batch scoring.
+- Add saved preprocessing artifacts so the trained model can be reused directly.
+
+## Final Outcome
+
+The best supervised model is the NN + GB ensemble with a test AUC of `0.74015`.
+
+The best profit-focused decision policy is the CQL offline RL model, with an estimated test profit of `109,434,483.87` and expected profit of `1,848.34` per loan under the notebook's reward assumptions.
